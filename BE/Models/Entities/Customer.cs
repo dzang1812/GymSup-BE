@@ -1,6 +1,20 @@
-﻿namespace BE.Models.Entities
+﻿using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
+
+namespace BE.Models.Entities;
+
+public class Customer
 {
-    public class Customer
-    {
-    }
+    [BsonId]
+    [BsonRepresentation(BsonType.ObjectId)]
+    public string Id { get; set; }
+
+    public string UserId { get; set; }
+
+    public int HeightCm { get; set; }
+    public int WeightKg { get; set; }
+
+    public string Goal { get; set; }
+    public string ExperienceLevel { get; set; }
+    public string InjuryNotes { get; set; }
 }

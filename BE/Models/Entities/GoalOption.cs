@@ -1,6 +1,15 @@
-﻿namespace BE.Models.Entities
+﻿using MongoDB.Bson;
+using MongoDB.Bson.Serialization.Attributes;
+
+namespace BE.Models.Entities;
+
+public class GoalOption
 {
-    public class GoalOption
-    {
-    }
+    [BsonId]
+    [BsonRepresentation(BsonType.ObjectId)]
+    public string Id { get; set; }
+
+    public string Code { get; set; } // BuildMuscle
+    public string Name { get; set; } // Tăng cơ
+    public string Description { get; set; }
 }
