@@ -1,4 +1,4 @@
-﻿namespace BE.Models.DTOs.User
+﻿namespace GymSupport.Repository.Models.DTOs.User
 {
     public class UpdateUserRequest
     {

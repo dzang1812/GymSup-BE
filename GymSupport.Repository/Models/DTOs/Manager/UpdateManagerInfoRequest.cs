@@ -1,4 +1,4 @@
-﻿namespace BE.Models.DTOs.Manager
+﻿namespace GymSupport.Repository.Models.DTOs.Manager
 {
     public class UpdateManagerInfoRequest
     {

@@ -1,4 +1,4 @@
-﻿namespace BE.Models.DTOs.Customer
+﻿namespace GymSupport.Repository.Models.DTOs.Customer
 {
     public class UpdateCustomerInfoRequest
     {

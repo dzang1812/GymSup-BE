@@ -1,5 +1,5 @@
 ﻿using MongoDB.Driver;
-
+using Microsoft.Extensions.Configuration;
 namespace GymCoach.Api.Config;
 
 public class MongoDbContext
@@ -8,8 +8,8 @@ public class MongoDbContext
 
     public MongoDbContext(IConfiguration config)
     {
-        var connectionString = config["MongoDb:ConnectionString"];
-        var dbName = config["MongoDb:DatabaseName"];
+        var connectionString = config["MongoDbSettings:ConnectionString"];
+        var dbName = config["MongoDbSettings:DatabaseName"];
 
         var client = new MongoClient(connectionString);
         _database = client.GetDatabase(dbName);

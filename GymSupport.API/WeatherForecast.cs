@@ -1,4 +1,4 @@
-namespace BR
+namespace GymSupport.API
 {
     public class WeatherForecast
     {

@@ -1,7 +1,7 @@
 ﻿using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace BE.Models.Entities;
+namespace GymSupport.Repository.Models.Entities;
 
 public class Customer
 {
