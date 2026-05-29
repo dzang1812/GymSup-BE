@@ -27,4 +27,11 @@
     <ProjectReference Include="..\GymSupport.Service\GymSupport.Service.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\GymSupport.Service\Templates\VerifySuccess.html">
+      <Link>Templates\VerifySuccess.html</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

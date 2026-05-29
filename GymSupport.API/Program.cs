@@ -1,5 +1,6 @@
 using GymCoach.Api.Config;
 using GymSupport.Repository.Interfaces;
+using GymSupport.Repository.Models.Entities;
 using GymSupport.Repository.Repositories;
 using GymSupport.Service.Interfaces;
 using GymSupport.Service.Services;
@@ -45,11 +46,32 @@ builder.Services.AddAuthentication(options =>
     });
 
 // Register application services
-builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.AddScoped<ITokenService, JwtTokenService>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 var app = builder.Build();
+using (var scope = app.Services.CreateScope())
+{
+    var userRepo = scope.ServiceProvider.GetRequiredService<IUserRepository>();
 
+    var admin = await userRepo.GetByEmailAsync("admin@gym.com");
+    if (admin == null)
+    {
+        var newAdmin = new User
+        {
+            FullName = "Admin",
+            Email = "nkg109204@gmail.com",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("12345"),
+            Role = "Admin",
+            CreatedAt = DateTime.UtcNow,
+            IsEmailVerified = true,
+            VerifiedAt = DateTime.UtcNow
+        };
+
+        await userRepo.CreateAsync(newAdmin);
+    }
+}
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {

@@ -5,8 +5,10 @@ namespace GymSupport.Service.Interfaces
 {
     public interface IAuthService
     {
-        Task<string> RegisterCustomerAsync(RegisterCustomerRequest req);
-        Task<string> RegisterManagerAsync(RegisterManagerRequest req);
+        Task<(string userId, bool isNewRegistration)> RegisterCustomerAsync(RegisterCustomerRequest req);
+        Task<(string userId, bool isNewRegistration)> RegisterManagerAsync(RegisterManagerRequest req);
         Task<AuthResponse> LoginAsync(LoginRequest req);
+        Task VerifyEmailAsync(string userId, string token);
+        Task ResendVerificationEmailAsync(string email);
     }
 }

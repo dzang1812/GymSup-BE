@@ -17,4 +17,5 @@ public class Customer
     public string Goal { get; set; }
     public string ExperienceLevel { get; set; }
     public string InjuryNotes { get; set; }
+    public string Subscription { get; set; }
 }

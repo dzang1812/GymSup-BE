@@ -19,6 +19,9 @@ namespace GymSupport.Repository.Repositories
 
         public Task CreateAsync(User user) => _users.InsertOneAsync(user);
 
+        public Task UpdateAsync(User user) =>
+            _users.ReplaceOneAsync(u => u.Id == user.Id, user);
+
         public Task<User?> GetByEmailAsync(string email) =>
             _users.Find(u => u.Email.ToLower() == email.ToLower()).FirstOrDefaultAsync();
 

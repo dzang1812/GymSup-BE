@@ -14,6 +14,11 @@ public class User
     public string PasswordHash { get; set; }
 
     public string Role { get; set; } // Admin, Manager, Customer
+    // public string? GymId { get; set; }
 
-    public string GymId { get; set; } // null nếu là Admin
+    public DateTime CreatedAt { get; set; }
+    public bool IsEmailVerified { get; set; }
+    public DateTime? VerifiedAt { get; set; }
+    public string? EmailVerificationToken { get; set; }
+    public DateTime? EmailVerificationTokenExpiresAt { get; set; }
 }
