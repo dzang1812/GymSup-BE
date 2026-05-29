@@ -1,6 +1,7 @@
 using GymSupport.Repository.Models.Entities;
 using GymCoach.Api.Config;
 using MongoDB.Driver;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using GymSupport.Repository.Interfaces;
 
@@ -22,10 +23,16 @@ namespace GymSupport.Repository.Repositories
         public Task UpdateAsync(User user) =>
             _users.ReplaceOneAsync(u => u.Id == user.Id, user);
 
-        public Task<User?> GetByEmailAsync(string email) =>
-            _users.Find(u => u.Email.ToLower() == email.ToLower()).FirstOrDefaultAsync();
+        public Task DeleteAsync(string id) =>
+            _users.DeleteOneAsync(u => u.Id == id);
 
-        public Task<User?> GetByIdAsync(string id) =>
-            _users.Find(u => u.Id == id).FirstOrDefaultAsync();
+        public async Task<IEnumerable<User>> GetAllAsync() =>
+            await _users.Find(_ => true).ToListAsync();
+
+        public async Task<User?> GetByEmailAsync(string email) =>
+            await _users.Find(u => u.Email.ToLower() == email.ToLower()).FirstOrDefaultAsync();
+
+        public async Task<User?> GetByIdAsync(string id) =>
+            await _users.Find(u => u.Id == id).FirstOrDefaultAsync();
     }
 }

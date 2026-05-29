@@ -14,8 +14,8 @@ public class Customer
     public int HeightCm { get; set; }
     public int WeightKg { get; set; }
 
-    public string Goal { get; set; }
-    public string ExperienceLevel { get; set; }
-    public string InjuryNotes { get; set; }
-    public string Subscription { get; set; }
+    public string? Goal { get; set; }
+    public string? ExperienceLevel { get; set; }
+    public string? InjuryNotes { get; set; }
+    public string Subscription { get; set; } = "free";
 }

@@ -3,6 +3,7 @@ using GymSupport.Repository.Models.Entities;
 using GymSupport.Repository.Interfaces;
 using GymSupport.Service.Interfaces;
 using Microsoft.Extensions.Configuration;
+using MongoDB.Bson;
 using System;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
@@ -12,6 +13,7 @@ namespace GymSupport.Service.Services
     public class AuthService : IAuthService
     {
         private readonly IUserRepository _repo;
+        private readonly ICustomerRepository _customerRepository;
         private readonly ITokenService _tokenService;
         private readonly IEmailService _emailService;
         private readonly IConfiguration _config;
@@ -19,11 +21,13 @@ namespace GymSupport.Service.Services
 
         public AuthService(
             IUserRepository repo,
+            ICustomerRepository customerRepository,
             ITokenService tokenService,
             IEmailService emailService,
             IConfiguration config)
         {
             _repo = repo;
+            _customerRepository = customerRepository;
             _tokenService = tokenService;
             _emailService = emailService;
             _config = config;
@@ -45,6 +49,7 @@ namespace GymSupport.Service.Services
             var hash = BCrypt.Net.BCrypt.HashPassword(req.Password);
             var user = new User
             {
+                Id = ObjectId.GenerateNewId().ToString(),
                 FullName = req.FullName,
                 Email = req.Email,
                 PasswordHash = hash,
@@ -55,6 +60,16 @@ namespace GymSupport.Service.Services
 
             AssignVerificationToken(user);
             await _repo.CreateAsync(user);
+            await _customerRepository.CreateAsync(new Customer
+            {
+                UserId = user.Id,
+                HeightCm = 0,
+                WeightKg = 0,
+                Goal = null,
+                ExperienceLevel = null,
+                InjuryNotes = null,
+                Subscription = "free"
+            });
             await SendVerificationEmailAsync(user);
             return (user.Id, true);
         }

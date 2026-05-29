@@ -7,13 +7,14 @@ public class User
 {
     [BsonId]
     [BsonRepresentation(BsonType.ObjectId)]
-    public string Id { get; set; }
+    public string Id { get; set; } = null!;
 
-    public string FullName { get; set; }
-    public string Email { get; set; }
-    public string PasswordHash { get; set; }
+    public string FullName { get; set; } = null!;
+    public string Email { get; set; } = null!;
+    public string PasswordHash { get; set; } = null!;
 
-    public string Role { get; set; } // Admin, Manager, Customer
+    public string Role { get; set; } = null!; // Admin, Manager, Customer
+    public bool IsActive { get; set; } = true;
     // public string? GymId { get; set; }
 
     public DateTime CreatedAt { get; set; }

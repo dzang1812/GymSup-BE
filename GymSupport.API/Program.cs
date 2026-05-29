@@ -50,7 +50,9 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.AddScoped<ITokenService, JwtTokenService>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
 var app = builder.Build();
+
 using (var scope = app.Services.CreateScope())
 {
     var userRepo = scope.ServiceProvider.GetRequiredService<IUserRepository>();
