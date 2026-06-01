@@ -1,6 +1,5 @@
-﻿namespace GymSupport.Repository.Models.Entities;
-
-public class ExerciseInSession
+﻿namespace GymSupport.Repository.Models.DTOs.WorkoutPlan;
+public class AddExerciseToSessionDto
 {
     public string ExerciseId { get; set; }
 

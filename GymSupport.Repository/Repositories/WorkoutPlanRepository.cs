@@ -1,0 +1,58 @@
+﻿using GymCoach.Api.Config;
+using GymSupport.Repository.Interfaces;
+using GymSupport.Repository.Models.Entities;
+using MongoDB.Driver;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace GymSupport.Repository.Repositories
+{
+    public class WorkoutPlanRepository : IWorkoutPlanRepository
+    {
+        private readonly IMongoCollection<WorkoutPlan> _collection;
+
+        public WorkoutPlanRepository(MongoDbContext context)
+        {
+            _collection = context.GetCollection<WorkoutPlan>("WorkoutPlans");
+        }
+
+        public async Task<List<WorkoutPlan>> GetAllAsync()
+        {
+            return await _collection.Find(_ => true).ToListAsync();
+        }
+
+        public async Task<WorkoutPlan?> GetByIdAsync(string id)
+        {
+            return await _collection
+                .Find(x => x.Id == id)
+                .FirstOrDefaultAsync();
+        }
+
+        public async Task<List<WorkoutPlan>> GetByUserIdAsync(string userId)
+        {
+            return await _collection
+                .Find(x => x.UserId == userId)
+                .ToListAsync();
+        }
+
+        public async Task CreateAsync(WorkoutPlan plan)
+        {
+            await _collection.InsertOneAsync(plan);
+        }
+
+        public async Task DeleteAsync(string id)
+        {
+            await _collection.DeleteOneAsync(x => x.Id == id);
+        }
+
+        public async Task UpdateAsync(WorkoutPlan plan)
+        {
+            await _collection.ReplaceOneAsync(
+                x => x.Id == plan.Id,
+                plan);
+        }
+    }
+}

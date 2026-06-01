@@ -9,11 +9,18 @@ public class WorkoutPlan
     [BsonRepresentation(BsonType.ObjectId)]
     public string Id { get; set; }
 
+    [BsonRepresentation(BsonType.ObjectId)]
     public string UserId { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public string Name { get; set; }
 
     public string Goal { get; set; }
+
     public int DaysPerWeek { get; set; }
 
-    public List<WorkoutSession> Sessions { get; set; }
+    public bool IsActive { get; set; } = true;
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public List<WorkoutSession> Sessions { get; set; } = [];
 }
