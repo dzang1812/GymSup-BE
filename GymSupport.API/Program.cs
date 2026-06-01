@@ -18,6 +18,14 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<MongoDbContext>();
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll",
+        policy => policy.AllowAnyOrigin()
+                        .AllowAnyHeader()
+                        .AllowAnyMethod());
+});
+
 // Jwt configuration
 var jwtKey = builder.Configuration["Jwt:Key"] ?? string.Empty;
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? string.Empty;
@@ -53,27 +61,27 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<ICustomerRepository, CustomerRepository>();
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
-{
-    var userRepo = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+//using (var scope = app.Services.CreateScope())
+//{
+//    var userRepo = scope.ServiceProvider.GetRequiredService<IUserRepository>();
 
-    var admin = await userRepo.GetByEmailAsync("admin@gym.com");
-    if (admin == null)
-    {
-        var newAdmin = new User
-        {
-            FullName = "Admin",
-            Email = "nkg109204@gmail.com",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("12345"),
-            Role = "Admin",
-            CreatedAt = DateTime.UtcNow,
-            IsEmailVerified = true,
-            VerifiedAt = DateTime.UtcNow
-        };
+//    var admin = await userRepo.GetByEmailAsync("admin@gym.com");
+//    if (admin == null)
+//    {
+//        var newAdmin = new User
+//        {
+//            FullName = "Admin",
+//            Email = "nkg109204@gmail.com",
+//            PasswordHash = BCrypt.Net.BCrypt.HashPassword("12345"),
+//            Role = "Admin",
+//            CreatedAt = DateTime.UtcNow,
+//            IsEmailVerified = true,
+//            VerifiedAt = DateTime.UtcNow
+//        };
 
-        await userRepo.CreateAsync(newAdmin);
-    }
-}
+//        await userRepo.CreateAsync(newAdmin);
+//    }
+//}
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -81,8 +89,12 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
+app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
 

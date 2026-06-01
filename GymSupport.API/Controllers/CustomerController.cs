@@ -62,6 +62,9 @@ namespace GymSupport.API.Controllers
             var customer = new Customer
             {
                 UserId = request.UserId,
+                Gender = request.Gender,
+                Age = request.Age ?? 0,
+                Bmi = request.Bmi ?? 0,
                 HeightCm = request.HeightCm ?? 0,
                 WeightKg = request.WeightKg ?? 0,
                 Goal = request.Goal,
@@ -84,6 +87,15 @@ namespace GymSupport.API.Controllers
             var customer = await _customerRepository.GetByIdAsync(id);
             if (customer == null)
                 return NotFound();
+
+            if (request.Gender != null)
+                customer.Gender = request.Gender;
+
+            if (request.Age.HasValue)
+                customer.Age = request.Age.Value;
+
+            if (request.Bmi.HasValue)
+                customer.Bmi = request.Bmi.Value;
 
             if (request.HeightCm.HasValue)
                 customer.HeightCm = request.HeightCm.Value;
