@@ -54,6 +54,12 @@ builder.Services.AddAuthentication(options =>
     });
 
 // Register application services
+builder.Services.AddHttpClient();
+
+
+builder.Services.AddScoped<
+    IAIService,
+    OpenAIService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.AddScoped<ITokenService, JwtTokenService>();
