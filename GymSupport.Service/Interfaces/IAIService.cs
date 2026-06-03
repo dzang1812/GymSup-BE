@@ -8,4 +8,9 @@ public interface IAIService
         string userId,
         string message);
     Task ApplySuggestionsAsync(ApplySuggestionsRequestDto dto);
+
+    Task<ImageAnalyzeResponseDto> AnalyzeImageAsync(
+      Stream imageStream,
+      string contentType,
+      string mode);
 }

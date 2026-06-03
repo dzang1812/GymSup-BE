@@ -62,4 +62,66 @@ public class AIController : ControllerBase
 
         return Ok(result);
     }
+
+    [HttpPost("analyze-image")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> AnalyzeImage(
+    IFormFile image,
+    string mode)
+    {
+        if (image == null || image.Length == 0)
+        {
+            return BadRequest(new
+            {
+                message = "Vui lòng chọn ảnh."
+            });
+        }
+
+        var allowedTypes = new[]
+        {
+        "image/jpeg",
+        "image/png",
+        "image/webp"
+    };
+
+        if (!allowedTypes.Contains(image.ContentType))
+        {
+            return BadRequest(new
+            {
+                message = "Chỉ hỗ trợ ảnh JPG, PNG hoặc WEBP."
+            });
+        }
+
+        if (image.Length > 5 * 1024 * 1024)
+        {
+            return BadRequest(new
+            {
+                message = "Ảnh không được vượt quá 5MB."
+            });
+        }
+
+        var allowedModes = new[]
+        {
+        "equipment_info",
+        "form_check",
+        "body_check"
+    };
+
+        if (!allowedModes.Contains(mode))
+        {
+            return BadRequest(new
+            {
+                message = "Mode không hợp lệ. Dùng equipment_info, form_check hoặc body_check."
+            });
+        }
+
+        await using var stream = image.OpenReadStream();
+
+        var result = await _aiService.AnalyzeImageAsync(
+            stream,
+            image.ContentType,
+            mode);
+
+        return Ok(result);
+    }
 }

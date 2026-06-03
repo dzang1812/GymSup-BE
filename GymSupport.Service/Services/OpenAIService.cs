@@ -439,4 +439,303 @@ QUY TẮC CẤU TRÚC JSON CHO TỪNG HÀNH ĐỘNG (BẮT BUỘC TUÂN THỦ):
 
         return aiResult ?? new ChatResponseDto { Response = "Không nhận được phản hồi." };
     }
+    public async Task<ImageAnalyzeResponseDto> AnalyzeImageAsync(
+    Stream imageStream,
+    string contentType,
+    string mode)
+    {
+        var apiKey = _configuration["OpenAI:ApiKey"];
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new Exception("OpenAI API key is missing.");
+        }
+
+        _httpClient.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", apiKey);
+
+        using var memoryStream = new MemoryStream();
+        await imageStream.CopyToAsync(memoryStream);
+
+        var imageBytes = memoryStream.ToArray();
+        var base64Image = Convert.ToBase64String(imageBytes);
+
+        var imageDataUrl = $"data:{contentType};base64,{base64Image}";
+
+        var prompt = mode switch
+        {
+            "equipment_info" => """
+Bạn là huấn luyện viên gym. Hãy xem ảnh này và phân tích máy tập hoặc dụng cụ tập luyện.
+
+Yêu cầu:
+1. Nhận diện đây có thể là máy tập/dụng cụ gì.
+2. Máy này dùng để tập nhóm cơ nào.
+3. Gợi ý các bài tập có thể tập với máy/dụng cụ này.
+4. Hướng dẫn cách dùng cơ bản.
+5. Đưa ra lưu ý an toàn.
+
+Nếu ảnh không rõ hoặc không chắc chắn, hãy nói rõ là không chắc.
+Không bịa thông tin.
+
+Trả về JSON đúng schema.
+""",
+
+            "form_check" => """
+Bạn là huấn luyện viên gym. Hãy xem ảnh này để đánh giá form/tư thế tập luyện.
+
+Yêu cầu:
+1. Dự đoán người dùng đang tập bài gì.
+2. Nhận xét form đang đúng ở điểm nào.
+3. Nhận xét form có thể sai hoặc nguy hiểm ở điểm nào.
+4. Gợi ý cách sửa form.
+5. Đưa ra lưu ý an toàn.
+
+Không chẩn đoán y tế.
+Nếu ảnh không rõ, hãy nói ảnh chưa đủ rõ.
+Không đưa ra kết luận tuyệt đối.
+
+Trả về JSON đúng schema.
+""",
+
+            "body_check" => """
+Bạn là huấn luyện viên gym. Hãy xem ảnh cơ thể người dùng và đưa ra đánh giá thể hình mang tính tham khảo.
+
+Yêu cầu:
+1. Nhận xét tổng quan vóc dáng dựa trên ảnh, nói lịch sự và không body-shaming.
+2. Không ước lượng chính xác  bệnh lý hoặc chẩn đoán y tế.
+3. Cho biết nhóm cơ nào có thể nên ưu tiên cải thiện.
+4. Gợi ý bài tập phù hợp cho các nhóm cơ đó.
+5. Gợi ý hướng tập luyện tổng quát: tăng cơ, siết cơ, cải thiện tư thế hoặc cân bằng cơ thể.
+6. Đưa ra lưu ý an toàn.
+7. Phần trăm mỡ, cân nặng, chiều cao chỉ nên ước lượng rất rộng nếu có thể, và phải nói rõ là ước lượng không chính xác.
+
+Ví dụ nhóm cơ có thể gợi ý (muscles) đưa ra 4 cái thôi:
+Cơ vai  (Deltoids):
+Vai trước (Anterior Deltoid)
+Vai giữa (Lateral Deltoid)
+Vai sau (Posterior Deltoid)
+Cơ chóp xoay(Rotator Cuff)
+
+Tay (Arms):
+Tay trước (Biceps):
+Biceps Brachii (Cơ nhị đầu)
+Brachialis (Cơ cánh tay)
+
+Tay sau (Triceps Brachii)
+Đầu dài (Long head)
+Đầu ngoài (Lateral head)
+Đầu giữa (Medial head)
+
+Cẳng tay (Forearms):
+Cơ ngửa/gập (Flexors)
+Cơ sấp/duỗi (Extensors & Brachioradialis)
+
+Cơ Lưng (Back):
+Lưng xô (Latissimus Dorsi - Lats)
+Cầu vai (Trapezius - Traps)
+Lưng giữa (Rhomboids)
+Tròn lớn (Teres Major)
+Dựng cột sống (Erector Spinae)
+
+
+Cơ Ngực (Chest)
+Ngực trên (Clavicular head)
+Ngực giữa(Sternal head)
+Ngực dưới(Abdominal head)
+Ngực nhỏ(Minor)
+
+Chân (Legs & Glutes)
+Đùi trước (Quadriceps):
+Đùi sau(Hamstrings):
+
+Cơ mông (Glutes)
+Cơ mông lớn(Gluteus Maximus)
+Cơ mông nhỡ(Gluteus Medius)
+Cơ mông nhỏ(Gluteus Minimus)
+
+Cơ khép đùi (Adductors)
+
+Cơ bắp chân (Calves)
+
+
+Cơ Bụng (Abs & Core)
+Cơ thẳng bụng(Rectus Abdominis)
+Cơ liên sườn ngoài(External Obliques)
+Cơ liên sườn trong(Internal Obliques)
+Cơ bụng ngang(Transversus Abdominis)
+
+Nếu ảnh không rõ, che quá nhiều, hoặc góc chụp không đủ, hãy nói cần ảnh rõ hơn.
+Trả về JSON đúng schema.
+""",
+
+            _ => """
+Bạn là huấn luyện viên gym. Hãy phân tích ảnh và đưa ra lời khuyên tập luyện an toàn.
+Trả về JSON đúng schema.
+"""
+        };
+
+        var requestBody = new
+        {
+            model = "gpt-4.1-mini",
+            messages = new object[]
+            {
+            new
+            {
+                role = "user",
+                content = new object[]
+                {
+                    new
+                    {
+                        type = "text",
+                        text = prompt
+                    },
+                    new
+                    {
+                        type = "image_url",
+                        image_url = new
+                        {
+                            url = imageDataUrl
+                        }
+                    }
+                }
+            }
+            },
+            temperature = 0.2,
+            response_format = new
+            {
+                type = "json_schema",
+                json_schema = new
+                {
+                    name = "gym_image_analysis",
+                    strict = true,
+                    schema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            mode = new { type = "string" },
+                            title = new { type = "string" },
+                            summary = new { type = "string" },
+
+                            detectedItems = new
+                            {
+                                type = "array",
+                                items = new { type = "string" }
+                            },
+
+                            bodyObservations = new
+                            {
+                                type = "array",
+                                items = new { type = "string" }
+                            },
+
+                            muscles = new
+                            {
+                                type = "array",
+                                items = new { type = "string" }
+                            },
+
+                            priorityMuscles = new
+                            {
+                                type = "array",
+                                items = new { type = "string" }
+                            },
+
+                            suggestedExercises = new
+                            {
+                                type = "array",
+                                items = new { type = "string" }
+                            },
+
+                            formFeedback = new
+                            {
+                                type = "array",
+                                items = new { type = "string" }
+                            },
+
+                            trainingAdvice = new
+                            {
+                                type = "array",
+                                items = new { type = "string" }
+                            },
+
+                            warnings = new
+                            {
+                                type = "array",
+                                items = new { type = "string" }
+                            }
+                        },
+                        required = new[]
+                        {
+                        "mode",
+                        "title",
+                        "summary",
+                        "detectedItems",
+                        "bodyObservations",
+                        "muscles",
+                        "priorityMuscles",
+                        "suggestedExercises",
+                        "formFeedback",
+                        "trainingAdvice",
+                        "warnings"
+                    },
+                        additionalProperties = false
+                    }
+                }
+            },
+            max_tokens = 1000
+        };
+
+        var json = JsonSerializer.Serialize(requestBody);
+
+        var response = await _httpClient.PostAsync(
+            "https://api.openai.com/v1/chat/completions",
+            new StringContent(json, Encoding.UTF8, "application/json"));
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            throw new Exception($"OpenAI Vision Error: {error}");
+        }
+
+        var result = await response.Content.ReadAsStringAsync();
+
+        using var document = JsonDocument.Parse(result);
+
+        var aiContent = document.RootElement
+            .GetProperty("choices")[0]
+            .GetProperty("message")
+            .GetProperty("content")
+            .GetString();
+
+        if (string.IsNullOrWhiteSpace(aiContent))
+        {
+            return new ImageAnalyzeResponseDto
+            {
+                Mode = mode,
+                Title = "Không phân tích được ảnh",
+                Summary = "AI không trả về kết quả.",
+                Warnings = new List<string>
+            {
+                "Vui lòng thử lại với ảnh rõ hơn."
+            }
+            };
+        }
+
+        var analysis = JsonSerializer.Deserialize<ImageAnalyzeResponseDto>(
+            aiContent,
+            new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                PropertyNameCaseInsensitive = true
+            });
+
+        return analysis ?? new ImageAnalyzeResponseDto
+        {
+            Mode = mode,
+            Title = "Không phân tích được ảnh",
+            Summary = aiContent
+        };
+    }
+
 }
