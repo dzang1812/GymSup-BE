@@ -66,6 +66,10 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     IMuscleRepository,
     MuscleRepository>();
+builder.Services.AddScoped<IWorkoutSessionLogService, WorkoutSessionLogService>();
+builder.Services.AddScoped<IWorkoutSessionLogRepository, WorkoutSessionLogRepository>();
+builder.Services.AddScoped<IExerciseRepository, ExerciseRepository>();
+builder.Services.AddScoped<IWorkoutPlanRepository, WorkoutPlanRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.AddScoped<ITokenService, JwtTokenService>();
