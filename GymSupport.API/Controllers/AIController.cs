@@ -30,7 +30,19 @@ public class AIController : ControllerBase
 
         return Ok(result);
     }
+    [HttpPost("apply")]
+    public async Task<IActionResult> ApplySuggestions(
+    ApplySuggestionsRequestDto dto)
+    {
+        await _aiService
+            .ApplySuggestionsAsync(dto);
 
+        return Ok(new
+        {
+            success = true,
+            message = "Applied successfully"
+        });
+    }
     [HttpGet("history/{userId}")]
     public async Task<IActionResult> GetHistory(
     string userId)

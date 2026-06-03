@@ -7,5 +7,5 @@ public interface IAIService
     Task<ChatResponseDto> ChatAsync(
         string userId,
         string message);
-
+    Task ApplySuggestionsAsync(ApplySuggestionsRequestDto dto);
 }

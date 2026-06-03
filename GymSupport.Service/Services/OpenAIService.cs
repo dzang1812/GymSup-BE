@@ -1,4 +1,5 @@
 ﻿using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using GymSupport.Repository.Interfaces;
@@ -16,6 +17,7 @@ public class OpenAIService : IAIService
     private readonly IChatRepository _chatRepository;
     private readonly IWorkoutPlanRepository _workoutRepository;
     private readonly IExerciseRepository _exerciseRepository;
+
     public OpenAIService(
         HttpClient httpClient,
         IConfiguration configuration,
@@ -30,192 +32,411 @@ public class OpenAIService : IAIService
         _exerciseRepository = exerciseRepository;
     }
 
-    public async Task<ChatResponseDto> ChatAsync(
-    string userId,
-    string message)
+    public async Task ApplySuggestionsAsync(ApplySuggestionsRequestDto dto)
     {
-        var apiKey =
-            _configuration["OpenAI:ApiKey"];
+        string? newlyCreatedPlanId = null;
+        var createdSessionIds = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        _httpClient.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue(
-                "Bearer",
-                apiKey);
+        foreach (var suggestion in dto.Suggestions)
+        {
+            // 1. Ánh xạ PlanId nếu gặp ký tự giữ chỗ
+            if (suggestion.PlanId == "{planId}" || string.IsNullOrWhiteSpace(suggestion.PlanId))
+            {
+                suggestion.PlanId = newlyCreatedPlanId;
+            }
 
-        var history =
-            await _chatRepository
-                .GetRecentMessagesAsync(userId, 20);
+            // 2. Ánh xạ SessionId động dựa trên hậu tố ngày
+            if (!string.IsNullOrEmpty(suggestion.SessionId) && suggestion.SessionId.StartsWith("{sessionId_"))
+            {
+                var dayKey = suggestion.SessionId
+                    .Replace("{sessionId_", "")
+                    .Replace("}", "")
+                    .Trim();
 
+                if (createdSessionIds.TryGetValue(dayKey, out var realSessionId))
+                {
+                    suggestion.SessionId = realSessionId;
+                }
+            }
+            else if (suggestion.SessionId == "{sessionId}" && createdSessionIds.Any())
+            {
+                suggestion.SessionId = createdSessionIds.Last().Value;
+            }
+
+            // 3. Xử lý logic theo từng Action
+            switch (suggestion.Action?.ToLower().Trim())
+            {
+                case "create_plan":
+                    // NẾU TẠO LỊCH MỚI: Tắt toàn bộ lịch cũ của user trước để đảm bảo tính duy nhất của Active Plan
+                    var userPlans = await _workoutRepository.GetByUserIdAsync(dto.UserId);
+                    foreach (var oldPlan in userPlans.Where(p => p.IsActive))
+                    {
+                        oldPlan.IsActive = false;
+                        await _workoutRepository.UpdateAsync(oldPlan);
+                    }
+
+                    var newPlan = new WorkoutPlan
+                    {
+                        UserId = dto.UserId,
+                        Name = suggestion.PlanName,
+                        Goal = suggestion.Goal,
+                        DaysPerWeek = suggestion.DaysPerWeek,
+                        IsActive = true, // Lịch mới luôn được ưu tiên kích hoạt
+                        Sessions = new List<WorkoutSession>()
+                    };
+
+                    await _workoutRepository.CreateAsync(newPlan);
+                    newlyCreatedPlanId = newPlan.Id;
+                    break;
+
+                case "create_session":
+                    if (string.IsNullOrEmpty(suggestion.PlanId)) break;
+
+                    var plan = await _workoutRepository.GetByIdAsync(suggestion.PlanId);
+                    if (plan == null) break;
+
+                    var newSession = new WorkoutSession
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        DayOfWeek = suggestion.DayOfWeek,
+                        Focus = suggestion.Focus,
+                        Exercises = new List<ExerciseInSession>()
+                    };
+
+                    plan.Sessions.Add(newSession);
+                    await _workoutRepository.UpdateAsync(plan);
+
+                    if (!string.IsNullOrEmpty(suggestion.DayOfWeek))
+                    {
+                        createdSessionIds[suggestion.DayOfWeek.Trim()] = newSession.Id;
+                    }
+                    break;
+
+                case "add_exercise":
+                    if (string.IsNullOrEmpty(suggestion.PlanId) || string.IsNullOrEmpty(suggestion.SessionId)) break;
+
+                    var workoutPlan = await _workoutRepository.GetByIdAsync(suggestion.PlanId);
+                    if (workoutPlan == null) break;
+
+                    var session = workoutPlan.Sessions.FirstOrDefault(x => x.Id == suggestion.SessionId);
+                    if (session == null) break;
+
+                    string dbExerciseName = "";
+                    if (!string.IsNullOrEmpty(suggestion.ExerciseId))
+                    {
+                        var originalExercise = await _exerciseRepository.GetByIdAsync(suggestion.ExerciseId);
+                        if (originalExercise != null)
+                        {
+                            dbExerciseName = originalExercise.Name; // Lấy tên thật từ danh mục bài tập (ví dụ: "Bench Press")
+                        }
+                    }
+                    session.Exercises.Add(new ExerciseInSession
+                    {
+                        ExerciseId = suggestion.ExerciseId,
+                        ExerciseName = dbExerciseName,
+                        Sets = suggestion.Sets,
+                        Reps = suggestion.Reps,
+                        Notes = suggestion.Notes
+                    });
+
+                    await _workoutRepository.UpdateAsync(workoutPlan);
+                    break;
+
+                case "update_exercise":
+                    if (string.IsNullOrEmpty(suggestion.PlanId) || string.IsNullOrEmpty(suggestion.SessionId) || string.IsNullOrEmpty(suggestion.ExerciseId))
+                        break;
+
+                    var uPlan = await _workoutRepository.GetByIdAsync(suggestion.PlanId);
+                    if (uPlan == null) break;
+
+                    var uSession = uPlan.Sessions.FirstOrDefault(x => x.Id == suggestion.SessionId);
+                    if (uSession == null) break;
+
+                    var targetEx = uSession.Exercises.FirstOrDefault(x => x.ExerciseId == suggestion.ExerciseId);
+                    if (targetEx != null)
+                    {
+                        targetEx.Sets = suggestion.Sets;
+                        targetEx.Reps = suggestion.Reps;
+                        targetEx.Notes = suggestion.Notes;
+
+                        await _workoutRepository.UpdateAsync(uPlan);
+                    }
+                    break;
+
+                case "remove_exercise":
+                    if (string.IsNullOrEmpty(suggestion.PlanId) || string.IsNullOrEmpty(suggestion.SessionId) || string.IsNullOrEmpty(suggestion.ExerciseId))
+                        break;
+
+                    var rPlan = await _workoutRepository.GetByIdAsync(suggestion.PlanId);
+                    if (rPlan == null) break;
+
+                    var rSession = rPlan.Sessions.FirstOrDefault(x => x.Id == suggestion.SessionId);
+                    if (rSession == null) break;
+
+                    // Tìm bài tập cần xóa dựa trên ExerciseId
+                    var exToRemove = rSession.Exercises.FirstOrDefault(x => x.ExerciseId == suggestion.ExerciseId);
+                    if (exToRemove != null)
+                    {
+                        rSession.Exercises.Remove(exToRemove); // Xóa khỏi danh sách
+                        await _workoutRepository.UpdateAsync(rPlan); // Cập nhật lại vào MongoDB
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+        }
+    }
+
+    public async Task<ChatResponseDto> ChatAsync(string userId, string message)
+    {
+        var apiKey = _configuration["OpenAI:ApiKey"];
+        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+
+        // ==========================
+        // Chat History
+        // ==========================
+        var history = await _chatRepository.GetRecentMessagesAsync(userId, 20);
         history.Reverse();
 
-        var plans =
-            await _workoutRepository
-                .GetByUserIdAsync(userId);
+        // ==========================
+        // Workout Plans
+        // ==========================
+        var plans = await _workoutRepository.GetByUserIdAsync(userId);
+        var activePlan = plans.FirstOrDefault(p => p.IsActive);
 
-        var exercises =
-            await _exerciseRepository
-                .GetAllAsync();
+        var workoutJson = JsonSerializer.Serialize(
+            activePlan,
+            new JsonSerializerOptions { WriteIndented = true });
 
-        var workoutInfo =
-            JsonSerializer.Serialize(plans);
+        // ==========================
+        // Exercises
+        // ==========================
+        var exercises = (await _exerciseRepository.GetAllAsync()).ToList();
+        var exerciseJson = JsonSerializer.Serialize(exercises, new JsonSerializerOptions { WriteIndented = true });
 
-        var exerciseNames =
-            string.Join(
-                ", ",
-                exercises.Select(x => x.Name));
-
+        // ==========================
+        // Build Messages với SYSTEM PROMPT LUẬT THÉP
+        // ==========================
         var messages = new List<object>();
 
         messages.Add(new
         {
             role = "system",
             content =
-    $"""
-Bạn là GymSupport AI Coach.
+$$"""
+Bạn là GymSupport AI Coach - Trợ lý huấn luyện viên thể hình chuyên nghiệp. Bạn có nhiệm vụ quản lý lịch tập (Workout Plan) cho người dùng giống như một Thời khóa biểu tuần.
 
-Nhiệm vụ:
-- Chỉ trả lời các câu hỏi liên quan đến gym, fitness, cardio, bodybuilding, tăng cơ, giảm mỡ và dinh dưỡng.
-- Trả lời bằng tiếng Việt.
-- Với câu hỏi ngắn, trả lời ngắn gọn.
-- Nếu người dùng muốn giải thích thêm thì mới trả lời chi tiết.
-- Nếu câu hỏi không liên quan fitness hãy trả lời:
-'Xin lỗi, tôi chỉ hỗ trợ các câu hỏi về tập luyện và dinh dưỡng.'
+=========================================
+KIẾN TRÚC DỮ LIỆU CỦA HỆ THỐNG:
+1. WorkoutPlan (Lịch tập tổng)
+2. WorkoutSession (Buổi tập theo thứ: "Monday", "Tuesday",...)
+3. ExerciseInSession (Bài tập chi tiết nằm trong từng Session)
+=========================================
+HÀNH ĐỘNG 1: THÊM BÀI TẬP MỚI (ADD EXERCISE)
+1. KIỂM TRA THỨ/BUỔI TẬP: Khi người dùng nói muốn thêm một bài tập (Ví dụ: "Thêm cho anh bài Bench Press"), bạn PHẢI QUÉT trong lời thoại xem họ đã chỉ định cụ thể là thêm vào thứ mấy chưa.
+   --> NẾU CHƯA NÓI THỨ: Tuyệt đối KHÔNG ĐƯỢC tự ý sinh hành động 'add_exercise'. Bạn phải chat text để hỏi lại: "Dạ, anh/chị muốn thêm bài [Tên bài] vào buổi tập của thứ mấy trong tuần ạ (Ví dụ: Thứ 2, Thứ 4...)?"
+   --> NẾU ĐÃ CÓ THỨ CỤ THỂ: Chuyển sang bước 2.
+2. KIỂM TRA THÔNG SỐ (SETS/REPS): 
+   --> Nếu người dùng có mô tả số sets, reps cụ thể (Ví dụ: "Thêm bài Bench Press vào Thứ 2 tập 4 hiệp 12 reps"): Bạn PHẢI tuân thủ điền chính xác số `sets: 4` và `reps: "12"` vào json hành động.
+   --> Nếu người dùng KHÔNG nói thông số (Ví dụ: "Thêm bài Bench Press vào Thứ 2"): Bạn hãy tự động điền thông số tiêu chuẩn mặc định là `sets: 4` và `reps: "10-12"` thay vì để trống.
 
-Danh sách bài tập hiện có:
+-----------------------------------------
+HÀNH ĐỘNG 2: XÓA BÀI TẬP (REMOVE EXERCISE)
+Khi người dùng yêu cầu xóa một bài tập (Ví dụ: "Xóa bài Bench Press giúp anh"):
+1. Trường hợp bài tập đó CHỈ XUẤT HIỆN DUY NHẤT ở 1 buổi trong toàn bộ Plan: Sinh ngay hành động 'remove_exercise' để xóa bài đó tại buổi đó.
+2. Trường hợp bài tập đó XUẤT HIỆN TRÙNG LẶP ở từ 2 buổi trở lên trong Plan (Ví dụ: Bench Press xuất hiện ở cả buổi Thứ 2 và Thứ 6):
+   --> TUYỆT ĐỐI KHÔNG ĐƯỢC tự ý chọn một buổi để xóa, cũng KHÔNG ĐƯỢC tự ý xóa hết. Mảng `suggestions` bắt buộc phải để rỗng `[]`.
+   --> Bạn phải đưa câu hỏi xác nhận rõ ràng ở trường `response`: "Dạ, em thấy bài [Tên bài] đang có mặt ở cả lịch tập [Thứ A] và [Thứ B]. Anh/Chị muốn xóa bài này ở riêng một buổi cụ thể nào hay muốn xóa hoàn toàn khỏi tất cả các buổi ạ?"
+   --> CHỈ KHI NÀO người dùng phản hồi rõ ràng (Ví dụ: "Xóa ở Thứ 2 thôi" hoặc "Xóa hết đi em") thì ở lượt chat kế tiếp bạn mới được sinh hành động 'remove_exercise' tương ứng với lựa chọn của họ.
+=========================================
+QUY TẮC ĐỒNG BỘ NGÔN NGỮ NGÀY THÁNG (BẮT BUỘC):
+- Dữ liệu hệ thống lưu tên thứ bằng tiếng Anh: "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday".
+- Khi người dùng nói "Thứ 2", bạn phải tự hiểu là "Monday"; "Thứ 4" là "Wednesday"; "Thứ 6" là "Friday",... để tra cứu chính xác trong trường `DayOfWeek` của dữ liệu {{workoutJson}}.
 
-{exerciseNames}
+=========================================
+DỮ LIỆU THỰC TẾ HIỆN TẠI TỪ DATABASE CẤP CHO BẠN:
+- WORKOUT PLAN ĐANG KÍCH HOẠT CỦA USER: {{workoutJson}}
+- DANH SÁCH BÀI TẬP HỢP LỆ TRONG HỆ THỐNG: {{exerciseJson}}
 
-WorkoutPlan hiện tại:
+=========================================
+LUỒNG TƯ VẤN VÀ QUY TẮC SINH HÀNH ĐỘNG (QUAN TRỌNG NHẤT):
 
-{workoutInfo}
+TRƯỜNG HỢP 1: TRONG DỮ LIỆU "WORKOUT PLAN ĐANG KÍCH HOẠT" ĐANG TRỐNG RỖNG (HOẶC BẰNG NULL)
+- GIAI ĐOẠN THẢO LUẬN: Khi user yêu cầu lên lịch tập mới, gợi ý giáo án, hoặc yêu cầu "lên danh sách bài tập cụ thể cho từng ngày"... Bạn CHỈ ĐƯỢC PHÉP liệt kê và phân tích chi tiết giáo án bằng văn bản thuần (text) ở trường `response`.
+  --> TUYỆT ĐỐI KHÔNG ĐƯỢC sinh bất kỳ hành động nào vào mảng `suggestions`. Mảng `suggestions` lúc này bắt buộc phải để rỗng `[]`.
+  --> Ở cuối câu `response`, bạn luôn luôn phải hỏi câu xác nhận rõ ràng phù hợp với đại từ xưng hô đang trò chuyện (Ví dụ: "Anh/Chị có đồng ý khởi tạo và lưu lịch tập tuần này lên hệ thống không?").
 
-Nếu người dùng muốn cải thiện lịch tập:
-- Chỉ đề xuất các bài tập trong danh sách trên.
-- Không tạo bài tập mới.
-- Không tạo ID mới.
-- Có thể đề xuất thêm bài tập vào lịch hiện tại.
+- GIAI ĐOẠN XÁC NHẬN: CHỈ KHI NÀO user đọc xong văn bản đề xuất bài tập của bạn và phản hồi bằng các từ khóa chốt hạ (Ví dụ: "Ok lưu đi", "Đồng ý", "Tạo lịch đi em", "Áp dụng đi", "Lưu lịch này nhé") -> Lúc này, dựa vào lịch sử chat cũ để gom lại thông tin bài tập đã thảo luận, bạn mới được phép đổ đồng thời 'create_plan', 'create_session', và 'add_exercise' vào mảng `suggestions`.
+  --> Quy tắc map ID giả định: Dùng "{planId}" và "{sessionId_Monday}", "{sessionId_Tuesday}",... cho các hành động đi kèm nhau trong mảng.
+
+TRƯỜNG HỢP 2: TRONG DỮ LIỆU "WORKOUT PLAN ĐANG KÍCH HOẠT" ĐÃ CÓ SẴN DỮ LIỆU
+- Khi user yêu cầu chỉnh sửa (tăng/giảm sets, reps, thay đổi ghi chú) hoặc xóa bài tập, giảm bớt bài tập:
+  --> Tuyệt đối KHÔNG ĐƯỢC sinh lại hành động 'create_plan' hay 'create_session'.
+  --> Nếu user muốn SỬA thông số (sets/reps): Sinh hành động 'update_exercise'.
+  --> Nếu user muốn XÓA/GIẢM BỚT bài tập (ví dụ: yêu cầu xóa bài Bench Press): Sinh hành động 'remove_exercise'.
+  --> Bạn phải đối chiếu chính xác tên bài tập user muốn xóa với `ExerciseName` trong {{workoutJson}} để tìm ra đúng `ExerciseId` thực tế, kèm theo `Id` của Plan và `Id` của Session chứa bài đó để điền vào hành động.
+
+=========================================
+QUY TẮC PHẢN HỒI RESPONSE VĂN BẢN KHÔNG HARDCODE:
+- Bạn hãy viết câu thoại `response` phản hồi cực kỳ tự nhiên, tinh tế, tự động xưng hô phù hợp giới tính/tuổi tác theo ngữ cảnh cũ.
+- Nội dung câu thoại phải ăn khớp chính xác với hành động thực tế (Ví dụ: Nếu người dùng chốt lưu lịch mới, hãy chúc mừng họ. Nếu người dùng bảo thêm/xóa bài lẻ, hãy thông báo cụ thể đã thêm/xóa bài đó thành công).
+=========================================
+1. Người dùng yêu cầu Thêm/Sửa/Xóa một bài tập nhưng TÊN BÀI TẬP ĐÓ KHÔNG TỒN TẠI trong danh sách {{exerciseJson}} hoặc viết sai chính tả quá nặng không thể nhận diện: Bạn phải phản hồi lịch sự rằng hệ thống chưa hỗ trợ bài tập này và gợi ý họ chọn một bài tương tự có trong danh sách hệ thống.
+2. Người dùng yêu cầu thêm bài tập vào một Thứ (Ví dụ: Thứ 5) nhưng trong lịch tập hiện tại {{workoutJson}} CHƯA CÓ buổi tập (Session) nào cho Thứ 5:
+   --> Bạn phải phải hỏi người dùng xác nhận trước khi tự động sinh ĐỒNG THỜI 2 hành động liên tiếp trong mảng `suggestions`: Đầu tiên là 'create_session' cho ngày Thứ 5 đó, sau đó liền kề là 'add_exercise' để nạp bài tập vào chính Session vừa tạo.
+=========================================
+QUY TẮC CẤU TRÚC JSON CHO TỪNG HÀNH ĐỘNG (BẮT BUỘC TUÂN THỦ):
+- Hành động tạo Plan: Thừa các trường khác thì đặt giá trị mặc định là chuỗi rỗng "" hoặc 0.
+- Thứ tự sắp xếp mảng `suggestions` (nếu có): 'create_plan' -> 'create_session' -> 'add_exercise'.
 """
         });
 
         foreach (var item in history)
         {
-            messages.Add(new
-            {
-                role = item.Role,
-                content = item.Content
-            });
+            messages.Add(new { role = item.Role, content = item.Content });
         }
 
-        messages.Add(new
-        {
-            role = "user",
-            content = message
-        });
+        messages.Add(new { role = "user", content = message });
 
+        // =========================================================================
+        // OpenAI Request sử dụng STRUCTURED OUTPUTS (json_schema nghiêm ngặt)
+        // =========================================================================
         var requestBody = new
         {
             model = "gpt-4o-mini",
             messages,
-            temperature = 0.7
+            temperature = 0.2,
+            response_format = new
+            {
+                type = "json_schema",
+                json_schema = new
+                {
+                    name = "workout_chat_response",
+                    strict = true,
+                    schema = new
+                    {
+                        type = "object",
+                        properties = new
+                        {
+                            response = new { type = "string", description = "Lời thoại phản hồi gửi tới user." },
+                            suggestions = new
+                            {
+                                type = "array",
+                                items = new
+                                {
+                                    type = "object",
+                                    properties = new
+                                    {
+                                        action = new { type = "string", description = "Tên hành động tác động DB." },
+                                        planId = new { type = "string", description = "Mã ID thật của Plan lấy từ database hoặc {planId}." },
+                                        sessionId = new { type = "string", description = "Mã ID thật của Session lấy từ database hoặc dạng {sessionId_Day}." },
+                                        exerciseId = new { type = "string", description = "Mã ID thật của bài tập lấy từ database." },
+                                        planName = new { type = "string", description = "Tên lịch tập khi tạo mới." },
+                                        goal = new { type = "string", description = "Mục tiêu tập khi tạo mới." },
+                                        daysPerWeek = new { type = "integer", description = "Số ngày tập một tuần." },
+                                        dayOfWeek = new { type = "string", description = "Thứ trong tuần dạng tiếng Anh (ví dụ: Monday)." },
+                                        focus = new { type = "string", description = "Nhóm cơ tiêu điểm của buổi tập." },
+                                        sets = new { type = "integer", description = "Số sets tập." },
+                                        reps = new { type = "string", description = "Số reps tập." },
+                                        notes = new { type = "string", description = "Ghi chú thêm." }
+                                    },
+                                    required = new[] { "action", "planId", "sessionId", "exerciseId", "planName", "goal", "daysPerWeek", "dayOfWeek", "focus", "sets", "reps", "notes" },
+                                    additionalProperties = false
+                                }
+                            }
+                        },
+                        required = new[] { "response", "suggestions" },
+                        additionalProperties = false
+                    }
+                }
+            }
         };
 
-        var json =
-            JsonSerializer.Serialize(requestBody);
-
-        var response =
-            await _httpClient.PostAsync(
-                "https://api.openai.com/v1/chat/completions",
-                new StringContent(
-                    json,
-                    Encoding.UTF8,
-                    "application/json"));
+        var json = JsonSerializer.Serialize(requestBody);
+        var response = await _httpClient.PostAsync(
+            "https://api.openai.com/v1/chat/completions",
+            new StringContent(json, Encoding.UTF8, "application/json"));
 
         if (!response.IsSuccessStatusCode)
         {
-            var error =
-                await response.Content.ReadAsStringAsync();
-
-            throw new Exception(
-                $"OpenAI Error: {error}");
+            var error = await response.Content.ReadAsStringAsync();
+            throw new Exception($"OpenAI Error: {error}");
         }
 
-        var result =
-            await response.Content.ReadAsStringAsync();
+        var result = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(result);
+        var aiContent = document.RootElement
+            .GetProperty("choices")[0]
+            .GetProperty("message")
+            .GetProperty("content")
+            .GetString();
 
-        using var document =
-            JsonDocument.Parse(result);
-
-        var aiResponse =
-            document.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString();
-
-        await _chatRepository.CreateAsync(
-            new ChatMessage
-            {
-                UserId = userId,
-                Role = "user",
-                Content = message
-            });
-
-        await _chatRepository.CreateAsync(
-            new ChatMessage
-            {
-                UserId = userId,
-                Role = "assistant",
-                Content = aiResponse ?? ""
-            });
-
-        var chatResponse =
-            new ChatResponseDto
-            {
-                Response = aiResponse ?? ""
-            };
-
-        var firstPlan =
-            plans.FirstOrDefault();
-
-        if (firstPlan != null)
+        if (string.IsNullOrWhiteSpace(aiContent))
         {
-            foreach (var exercise in exercises)
-            {
-                if (string.IsNullOrWhiteSpace(aiResponse))
-                    continue;
-
-                if (!aiResponse.Contains(
-                        exercise.Name,
-                        StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                var session =
-                    firstPlan.Sessions
-                        .FirstOrDefault();
-
-                if (session == null)
-                    continue;
-
-                chatResponse.Suggestions.Add(
-                    new AISuggestionDto
-                    {
-                        Action = "add_exercise",
-
-                        PlanId = firstPlan.Id,
-
-                        SessionId = session.Id,
-
-                        ExerciseId = exercise.Id,
-
-                        Sets = 4,
-
-                        Reps = "8-12",
-
-                        Notes = "AI Recommendation"
-                    });
-            }
+            return new ChatResponseDto { Response = "AI không trả về dữ liệu." };
         }
 
-        return chatResponse;
+        ChatResponseDto? aiResult;
+        try
+        {
+            // Do Structured Outputs trả về chính xác camelCase, ta sử dụng JsonNamingPolicy.CamelCase để đồng bộ hóa hoàn hảo với C# PascalCase DTO
+            aiResult = JsonSerializer.Deserialize<ChatResponseDto>(
+                aiContent,
+                new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                    PropertyNameCaseInsensitive = true
+                });
+        }
+        catch
+        {
+            aiResult = new ChatResponseDto
+            {
+                Response = aiContent,
+                Suggestions = new List<AISuggestionDto>()
+            };
+        }
+
+        // ====================================================================
+        // LUỒNG ĐỒNG BỘ: TỰ ĐỘNG BẮT SUGGESTIONS ĐỂ GHI DATABASE LẬP TỨC
+        // ====================================================================
+        if (aiResult?.Suggestions != null && aiResult.Suggestions.Any(x => !string.IsNullOrEmpty(x.Action)))
+        {
+            // Loại bỏ các suggestion "rác" do thuộc tính strict điền mặc định (chỉ giữ lại những đối tượng có Action thực tế)
+            var validSuggestions = aiResult.Suggestions.Where(x => !string.IsNullOrEmpty(x.Action)).ToList();
+
+            if (validSuggestions.Any())
+            {
+                var applyDto = new ApplySuggestionsRequestDto
+                {
+                    UserId = userId,
+                    Suggestions = validSuggestions
+                };
+
+                // Gọi hàm lưu trực tiếp vào database ngay tại lượt chat này
+                await ApplySuggestionsAsync(applyDto);
+
+                if (validSuggestions.Any(x => x.Action?.ToLower().Trim() == "create_plan"))
+                {
+                    aiResult.Response = $"🎉 [Hệ thống: Đã khởi tạo lịch mới] - {aiResult.Response}";
+                }
+                else
+                {
+                    aiResult.Response = $"💪 [Hệ thống: Đã cập nhật lịch tập] - {aiResult.Response}";
+                }
+            }
+
+            // Xóa sạch mảng suggestions trước khi trả về client để tránh Frontend gọi đúp API lưu lần nữa
+            aiResult.Suggestions = new List<AISuggestionDto>();
+        }
+
+        // ==========================
+        // Save History
+        // ==========================
+        await _chatRepository.CreateAsync(new ChatMessage { UserId = userId, Role = "user", Content = message });
+        await _chatRepository.CreateAsync(new ChatMessage { UserId = userId, Role = "assistant", Content = aiResult?.Response ?? "" });
+
+        return aiResult ?? new ChatResponseDto { Response = "Không nhận được phản hồi." };
     }
 }

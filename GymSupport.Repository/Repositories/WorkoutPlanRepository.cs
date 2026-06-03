@@ -26,6 +26,11 @@ namespace GymSupport.Repository.Repositories
 
         public async Task<WorkoutPlan?> GetByIdAsync(string id)
         {
+            if (string.IsNullOrEmpty(id) || id.Length != 24 || !System.Text.RegularExpressions.Regex.IsMatch(id, @"^[0-9a-fA-F]{24}$"))
+            {
+                // Trả về null luôn chứ không để lỗi MongoDB format làm sập API
+                return null;
+            }
             return await _collection
                 .Find(x => x.Id == id)
                 .FirstOrDefaultAsync();
