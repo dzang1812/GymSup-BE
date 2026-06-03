@@ -14,22 +14,28 @@ public class OpenAIService : IAIService
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
     private readonly IChatRepository _chatRepository;
-
+    private readonly IWorkoutPlanRepository _workoutRepository;
+    private readonly IExerciseRepository _exerciseRepository;
     public OpenAIService(
         HttpClient httpClient,
         IConfiguration configuration,
-        IChatRepository chatRepository)
+        IChatRepository chatRepository,
+        IWorkoutPlanRepository workoutRepository,
+        IExerciseRepository exerciseRepository)
     {
         _httpClient = httpClient;
         _configuration = configuration;
         _chatRepository = chatRepository;
+        _workoutRepository = workoutRepository;
+        _exerciseRepository = exerciseRepository;
     }
 
     public async Task<ChatResponseDto> ChatAsync(
-        string userId,
-        string message)
+    string userId,
+    string message)
     {
-        var apiKey = _configuration["OpenAI:ApiKey"];
+        var apiKey =
+            _configuration["OpenAI:ApiKey"];
 
         _httpClient.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue(
@@ -42,25 +48,53 @@ public class OpenAIService : IAIService
 
         history.Reverse();
 
+        var plans =
+            await _workoutRepository
+                .GetByUserIdAsync(userId);
+
+        var exercises =
+            await _exerciseRepository
+                .GetAllAsync();
+
+        var workoutInfo =
+            JsonSerializer.Serialize(plans);
+
+        var exerciseNames =
+            string.Join(
+                ", ",
+                exercises.Select(x => x.Name));
+
         var messages = new List<object>();
 
         messages.Add(new
         {
             role = "system",
             content =
-                """
-                Bạn là GymSupport AI Coach.
+    $"""
+Bạn là GymSupport AI Coach.
 
-                Nhiệm vụ:
-                - Chỉ trả lời các câu hỏi liên quan đến gym, fitness, bodybuilding, cardio, giảm cân, tăng cơ, dinh dưỡng thể thao và sức khỏe tập luyện.
-                - Trả lời bằng tiếng Việt.
-                - Với câu hỏi ngắn, trả lời ngắn gọn.
-                - Nếu người dùng muốn chi tiết hơn thì mới giải thích sâu.
-                - Nếu câu hỏi không liên quan fitness, trả lời:
-                  'Xin lỗi, tôi chỉ hỗ trợ các câu hỏi về tập luyện và dinh dưỡng.'
-                - Không trả lời chính trị, hack, lập trình, tài chính, tôn giáo.
-                - Hãy ghi nhớ ngữ cảnh cuộc trò chuyện trước đó.
-                """
+Nhiệm vụ:
+- Chỉ trả lời các câu hỏi liên quan đến gym, fitness, cardio, bodybuilding, tăng cơ, giảm mỡ và dinh dưỡng.
+- Trả lời bằng tiếng Việt.
+- Với câu hỏi ngắn, trả lời ngắn gọn.
+- Nếu người dùng muốn giải thích thêm thì mới trả lời chi tiết.
+- Nếu câu hỏi không liên quan fitness hãy trả lời:
+'Xin lỗi, tôi chỉ hỗ trợ các câu hỏi về tập luyện và dinh dưỡng.'
+
+Danh sách bài tập hiện có:
+
+{exerciseNames}
+
+WorkoutPlan hiện tại:
+
+{workoutInfo}
+
+Nếu người dùng muốn cải thiện lịch tập:
+- Chỉ đề xuất các bài tập trong danh sách trên.
+- Không tạo bài tập mới.
+- Không tạo ID mới.
+- Có thể đề xuất thêm bài tập vào lịch hiện tại.
+"""
         });
 
         foreach (var item in history)
@@ -134,9 +168,54 @@ public class OpenAIService : IAIService
                 Content = aiResponse ?? ""
             });
 
-        return new ChatResponseDto
+        var chatResponse =
+            new ChatResponseDto
+            {
+                Response = aiResponse ?? ""
+            };
+
+        var firstPlan =
+            plans.FirstOrDefault();
+
+        if (firstPlan != null)
         {
-            Response = aiResponse ?? ""
-        };
+            foreach (var exercise in exercises)
+            {
+                if (string.IsNullOrWhiteSpace(aiResponse))
+                    continue;
+
+                if (!aiResponse.Contains(
+                        exercise.Name,
+                        StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var session =
+                    firstPlan.Sessions
+                        .FirstOrDefault();
+
+                if (session == null)
+                    continue;
+
+                chatResponse.Suggestions.Add(
+                    new AISuggestionDto
+                    {
+                        Action = "add_exercise",
+
+                        PlanId = firstPlan.Id,
+
+                        SessionId = session.Id,
+
+                        ExerciseId = exercise.Id,
+
+                        Sets = 4,
+
+                        Reps = "8-12",
+
+                        Notes = "AI Recommendation"
+                    });
+            }
+        }
+
+        return chatResponse;
     }
 }

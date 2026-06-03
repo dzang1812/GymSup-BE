@@ -10,10 +10,12 @@ public class Exercise
     public string Id { get; set; }
 
     public string Name { get; set; }
-    public List<string> TargetMuscles { get; set; }
     public string Equipment { get; set; }
     public string Difficulty { get; set; }
 
     public string ImageUrl { get; set; }
     public string VideoUrl { get; set; }
+
+    public List<MuscleImpact> MuscleImpacts
+    { get; set; } = new();
 }

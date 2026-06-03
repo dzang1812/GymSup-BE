@@ -27,7 +27,13 @@ public class ExerciseRepository : IExerciseRepository
             .Find(x => x.Id == id)
             .FirstOrDefaultAsync();
     }
-
+    public async Task<Exercise?> GetByNameAsync(
+    string name)
+    {
+        return await _exercises
+            .Find(x => x.Name == name)
+            .FirstOrDefaultAsync();
+    }
     public Task CreateAsync(Exercise exercise)
     {
         return _exercises.InsertOneAsync(exercise);

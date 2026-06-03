@@ -62,6 +62,10 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     IAIService,
     OpenAIService>();
+
+builder.Services.AddScoped<
+    IMuscleRepository,
+    MuscleRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IEmailService, SmtpEmailService>();
 builder.Services.AddScoped<ITokenService, JwtTokenService>();

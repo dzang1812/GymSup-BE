@@ -1,30 +1,37 @@
 ﻿using GymSupport.Repository.Interfaces;
+using GymSupport.Repository.Models.DTOs.Exercise;
 using GymSupport.Repository.Models.Entities;
 using Microsoft.AspNetCore.Mvc;
 
-[ApiController]
-[Route("api/[controller]")]
-public class ExerciseController : ControllerBase
-{
-    private readonly IExerciseRepository _exerciseRepository;
+namespace GymSupport.API.Controllers;
 
-    public ExerciseController(
-        IExerciseRepository exerciseRepository)
+[ApiController]
+[Route("api/exercises")]
+public class ExercisesController : ControllerBase
+{
+    private readonly IExerciseRepository _repository;
+
+    public ExercisesController(
+        IExerciseRepository repository)
     {
-        _exerciseRepository = exerciseRepository;
+        _repository = repository;
     }
 
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
-        return Ok(await _exerciseRepository.GetAllAsync());
+        var exercises =
+            await _repository.GetAllAsync();
+
+        return Ok(exercises);
     }
 
     [HttpGet("{id}")]
-    public async Task<IActionResult> GetById(string id)
+    public async Task<IActionResult> GetById(
+        string id)
     {
         var exercise =
-            await _exerciseRepository.GetByIdAsync(id);
+            await _repository.GetByIdAsync(id);
 
         if (exercise == null)
             return NotFound();
@@ -34,9 +41,33 @@ public class ExerciseController : ControllerBase
 
     [HttpPost]
     public async Task<IActionResult> Create(
-        [FromBody] Exercise exercise)
+        CreateExerciseDto dto)
     {
-        await _exerciseRepository.CreateAsync(exercise);
+        var exercise =
+            new Exercise
+            {
+                Name = dto.Name,
+                Equipment = dto.Equipment,
+                Difficulty = dto.Difficulty,
+                ImageUrl = dto.ImageUrl,
+                VideoUrl = dto.VideoUrl,
+
+                MuscleImpacts =
+                    dto.MuscleImpacts
+                        .Select(x =>
+                            new MuscleImpact
+                            {
+                                MuscleId =
+                                    x.MuscleId,
+
+                                Percentage =
+                                    x.Percentage
+                            })
+                        .ToList()
+            };
+
+        await _repository.CreateAsync(
+            exercise);
 
         return Ok(exercise);
     }
@@ -44,30 +75,50 @@ public class ExerciseController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(
         string id,
-        [FromBody] Exercise request)
+        CreateExerciseDto dto)
     {
         var exercise =
-            await _exerciseRepository.GetByIdAsync(id);
+            await _repository.GetByIdAsync(id);
 
         if (exercise == null)
             return NotFound();
 
-        exercise.Name = request.Name;
-        exercise.TargetMuscles = request.TargetMuscles;
-        exercise.Equipment = request.Equipment;
-        exercise.Difficulty = request.Difficulty;
-        exercise.ImageUrl = request.ImageUrl;
-        exercise.VideoUrl = request.VideoUrl;
+        exercise.Name = dto.Name;
+        exercise.Equipment = dto.Equipment;
+        exercise.Difficulty = dto.Difficulty;
+        exercise.ImageUrl = dto.ImageUrl;
+        exercise.VideoUrl = dto.VideoUrl;
 
-        await _exerciseRepository.UpdateAsync(exercise);
+        exercise.MuscleImpacts =
+            dto.MuscleImpacts
+                .Select(x =>
+                    new MuscleImpact
+                    {
+                        MuscleId =
+                            x.MuscleId,
 
-        return NoContent();
+                        Percentage =
+                            x.Percentage
+                    })
+                .ToList();
+
+        await _repository.UpdateAsync(
+            exercise);
+
+        return Ok(exercise);
     }
 
     [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(string id)
+    public async Task<IActionResult> Delete(
+        string id)
     {
-        await _exerciseRepository.DeleteAsync(id);
+        var exercise =
+            await _repository.GetByIdAsync(id);
+
+        if (exercise == null)
+            return NotFound();
+
+        await _repository.DeleteAsync(id);
 
         return NoContent();
     }
