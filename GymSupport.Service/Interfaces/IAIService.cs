@@ -4,5 +4,7 @@ namespace GymSupport.Service.Interfaces;
 
 public interface IAIService
 {
-    Task<ChatResponseDto> ChatAsync(string message);
+    Task<ChatResponseDto> ChatAsync(
+           string userId,
+           string message);
 }

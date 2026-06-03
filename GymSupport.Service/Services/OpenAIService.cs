@@ -1,7 +1,9 @@
 ﻿using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using GymSupport.Repository.Interfaces;
 using GymSupport.Repository.Models.DTOs.AIModel;
+using GymSupport.Repository.Models.Entities;
 using GymSupport.Service.Interfaces;
 using Microsoft.Extensions.Configuration;
 
@@ -11,46 +13,75 @@ public class OpenAIService : IAIService
 {
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
+    private readonly IChatRepository _chatRepository;
 
     public OpenAIService(
         HttpClient httpClient,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IChatRepository chatRepository)
     {
         _httpClient = httpClient;
         _configuration = configuration;
+        _chatRepository = chatRepository;
     }
 
     public async Task<ChatResponseDto> ChatAsync(
+        string userId,
         string message)
     {
-        var apiKey =
-            _configuration["OpenAI:ApiKey"];
+        var apiKey = _configuration["OpenAI:ApiKey"];
 
         _httpClient.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue(
                 "Bearer",
                 apiKey);
 
+        var history =
+            await _chatRepository
+                .GetRecentMessagesAsync(userId, 20);
+
+        history.Reverse();
+
+        var messages = new List<object>();
+
+        messages.Add(new
+        {
+            role = "system",
+            content =
+                """
+                Bạn là GymSupport AI Coach.
+
+                Nhiệm vụ:
+                - Chỉ trả lời các câu hỏi liên quan đến gym, fitness, bodybuilding, cardio, giảm cân, tăng cơ, dinh dưỡng thể thao và sức khỏe tập luyện.
+                - Trả lời bằng tiếng Việt.
+                - Với câu hỏi ngắn, trả lời ngắn gọn.
+                - Nếu người dùng muốn chi tiết hơn thì mới giải thích sâu.
+                - Nếu câu hỏi không liên quan fitness, trả lời:
+                  'Xin lỗi, tôi chỉ hỗ trợ các câu hỏi về tập luyện và dinh dưỡng.'
+                - Không trả lời chính trị, hack, lập trình, tài chính, tôn giáo.
+                - Hãy ghi nhớ ngữ cảnh cuộc trò chuyện trước đó.
+                """
+        });
+
+        foreach (var item in history)
+        {
+            messages.Add(new
+            {
+                role = item.Role,
+                content = item.Content
+            });
+        }
+
+        messages.Add(new
+        {
+            role = "user",
+            content = message
+        });
+
         var requestBody = new
         {
             model = "gpt-4o-mini",
-            messages = new object[]
-            {
-                new
-                {
-                    role = "system",
-                    content =
-                        "Bạn là huấn luyện viên gym chuyên về tập luyện, dinh dưỡng, tăng cơ và giảm mỡ." +
-                        "Nhiệm vụ:\r\n- Chỉ trả lời các câu hỏi liên quan đến gym, fitness, bodybuilding, cardio," +
-                        " giảm cân, tăng cơ, dinh dưỡng thể thao và sức khỏe tập luyện.\r\n- Trả lời ngắn gọn, súc tích, với các câu hỏi ngắn chỉ tra lời ngắn gọn, và hỏi họ có muốn rõ hơn không thì mới trả lời dài tối đa 150 từ.\r\n- " +
-                        "Trả lời bằng tiếng Việt.\r\n- Nếu câu hỏi không liên quan đến fitness, hãy trả lời:\r\n'Xin lỗi, tôi chỉ hỗ trợ các câu hỏi về tập luyện và dinh dưỡng.'\r\n- Không trả lời các chủ đề chính trị, tôn giáo, lập trình, hack, tài chính hoặc nội dung ngoài fitness.\r\n"
-                },
-                new
-                {
-                    role = "user",
-                    content = message
-                }
-            },
+            messages,
             temperature = 0.7
         };
 
@@ -86,6 +117,22 @@ public class OpenAIService : IAIService
                 .GetProperty("message")
                 .GetProperty("content")
                 .GetString();
+
+        await _chatRepository.CreateAsync(
+            new ChatMessage
+            {
+                UserId = userId,
+                Role = "user",
+                Content = message
+            });
+
+        await _chatRepository.CreateAsync(
+            new ChatMessage
+            {
+                UserId = userId,
+                Role = "assistant",
+                Content = aiResponse ?? ""
+            });
 
         return new ChatResponseDto
         {

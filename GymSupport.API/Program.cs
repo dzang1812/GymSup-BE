@@ -55,7 +55,9 @@ builder.Services.AddAuthentication(options =>
 
 // Register application services
 builder.Services.AddHttpClient();
-
+builder.Services.AddScoped<
+    IChatRepository,
+    ChatRepository>();
 
 builder.Services.AddScoped<
     IAIService,

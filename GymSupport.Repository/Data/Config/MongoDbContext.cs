@@ -1,5 +1,6 @@
-﻿using MongoDB.Driver;
+﻿using GymSupport.Repository.Models.Entities;
 using Microsoft.Extensions.Configuration;
+using MongoDB.Driver;
 namespace GymCoach.Api.Config;
 
 public class MongoDbContext
@@ -17,4 +18,7 @@ public class MongoDbContext
 
     public IMongoCollection<T> GetCollection<T>(string name)
         => _database.GetCollection<T>(name);
+
+    public IMongoCollection<ChatMessage> ChatMessages =>
+    GetCollection<ChatMessage>("ChatMessages");
 }
