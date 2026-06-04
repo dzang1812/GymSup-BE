@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.IO;
+using System.Security.Claims;
 
 namespace GymSupport.API.Controllers
 {
@@ -110,7 +111,8 @@ namespace GymSupport.API.Controllers
         [HttpGet("me")]
         public IActionResult Me()
         {
-            var userId = User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
+            var userId = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier) 
+                ?? User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub);
             return Ok(new { userId });
         }
     }

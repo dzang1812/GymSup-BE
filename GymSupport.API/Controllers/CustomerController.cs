@@ -11,7 +11,7 @@ namespace GymSupport.API.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    //[Authorize]
+    [Authorize]
     public class CustomerController : ControllerBase
     {
         private readonly ICustomerRepository _customerRepository;
@@ -28,7 +28,7 @@ namespace GymSupport.API.Controllers
         {
             var currentUser = await GetActiveUserAsync();
             if (currentUser == null)
-                return Forbid();
+                return Unauthorized();
 
             var customers = await _customerRepository.GetAllAsync();
             return Ok(customers);
@@ -128,7 +128,7 @@ namespace GymSupport.API.Controllers
                 return null;
 
             var currentUser = await _userRepository.GetByIdAsync(currentUserId);
-            if (currentUser == null || !currentUser.IsActive)
+            if (currentUser == null)
                 return null;
 
             return currentUser;

@@ -32,6 +32,7 @@ namespace GymSupport.Service.Services
 
             var claims = new[]
             {
+                new Claim(ClaimTypes.NameIdentifier, user.Id),
                 new Claim(JwtRegisteredClaimNames.Sub, user.Id),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
                 new Claim(ClaimTypes.Role, user.Role ?? "")

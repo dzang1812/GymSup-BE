@@ -121,7 +121,6 @@ namespace GymSupport.Service.Services
             {
                 Token = token,
                 UserId = user.Id,
-                Email = user.Email,
                 Role = user.Role
             };
         }
